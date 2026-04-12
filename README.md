@@ -74,8 +74,9 @@ Open [http://localhost:3000](http://localhost:3000). Without Firebase env vars y
 
 The route [`src/app/api/cron/workflows/route.ts`](src/app/api/cron/workflows/route.ts) materializes pending workflow slots and sends Web Push notifications for due pending entries.
 
-- **Vercel**: [`vercel.json`](vercel.json) schedules `GET /api/cron/workflows` every 15 minutes. Set `CRON_SECRET` in Vercel; Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` ([docs](https://vercel.com/docs/cron-jobs)).
-- **Elsewhere**: use [cron-job.org](https://cron-job.org) or similar to `GET` your deployed URL with header `x-cron-secret: <CRON_SECRET>`.
+- **Vercel Hobby**: [`vercel.json`](vercel.json) runs `GET /api/cron/workflows` **once per day** at **06:00 UTC** (`0 6 * * *`). Hobby only allows daily crons. Set `CRON_SECRET` in Vercel; Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` ([docs](https://vercel.com/docs/cron-jobs)).
+- **Vercel Pro** (or any host): you can use a tighter schedule (e.g. every 15 minutes) in `vercel.json` if your plan allows it.
+- **Elsewhere (free)**: use [cron-job.org](https://cron-job.org) or similar to `GET` your deployed URL as often as you like, with header `x-cron-secret: <CRON_SECRET>`.
 
 Local manual test (with env loaded):
 

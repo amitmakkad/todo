@@ -2,6 +2,7 @@
   "name": "todo",
   "version": "0.1.0",
   "private": true,
+  "description": "Personal todo list with Eisenhower quadrants and optional repeating check-in workflows.\nNext.js + Firebase: synced tasks, habits, and optional browser reminders.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
