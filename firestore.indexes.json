@@ -1,0 +1,33 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "workflow_entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "workflowId", "order": "ASCENDING" },
+        { "fieldPath": "outcome", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "workflow_entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "workflowId", "order": "ASCENDING" },
+        { "fieldPath": "scheduledAtMs", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "workflows",
+      "fieldPath": "enabled",
+      "ttl": false,
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    }
+  ]
+}
