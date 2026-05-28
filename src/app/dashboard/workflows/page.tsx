@@ -1,9 +1,13 @@
 "use client";
 
 import { useAuth } from "@/contexts/auth-context";
+import { workflowDefFromFirestore } from "@/lib/entry-materialize";
 import { getFirestoreDb } from "@/lib/firebase/client";
 import { WORKFLOW_TIMEZONE } from "@/lib/workflow-timezone";
-import { defaultSlotsPerDay, normalizeDayStartTime } from "@/lib/workflow-schedule";
+import {
+  formatCheckInTimes,
+  parseCheckInTimes,
+} from "@/lib/workflow-schedule";
 import {
   addDoc,
   collection,
@@ -16,32 +20,23 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Workflow = {
   id: string;
   name: string;
-  intervalHours: number;
   enabled: boolean;
-  dayStartTime: string;
-  slotsPerDay: number;
+  checkInTimes: number[];
 };
+
+const DEFAULT_TIMES_TEXT = "8:00";
 
 export default function WorkflowsPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<Workflow[]>([]);
   const [name, setName] = useState("");
-  const [intervalHours, setIntervalHours] = useState(4);
-  const [dayStartTime, setDayStartTime] = useState("08:00");
-  const [slotsPerDay, setSlotsPerDay] = useState(() => defaultSlotsPerDay(4));
+  const [timesText, setTimesText] = useState(DEFAULT_TIMES_TEXT);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setSlotsPerDay((prev) => {
-      const cap = defaultSlotsPerDay(intervalHours);
-      return Math.min(prev, cap);
-    });
-  }, [intervalHours]);
 
   useEffect(() => {
     if (!user) return;
@@ -51,47 +46,40 @@ export default function WorkflowsPage() {
       orderBy("createdAt", "desc"),
     );
     return onSnapshot(q, (snap) => {
-      setItems(
-        snap.docs.map((d) => {
-          const x = d.data() as Record<string, unknown>;
-          const ih = Math.min(24, Math.max(1, Math.round(Number(x.intervalHours) || 4)));
-          let spd = Math.round(Number(x.slotsPerDay));
-          if (!Number.isFinite(spd) || spd < 1) spd = defaultSlotsPerDay(ih);
-          spd = Math.min(48, Math.max(1, spd));
-          return {
-            id: d.id,
-            name: String(x.name || ""),
-            intervalHours: ih,
-            enabled: x.enabled !== false,
-            dayStartTime: normalizeDayStartTime(
-              typeof x.dayStartTime === "string" ? x.dayStartTime : undefined,
-            ),
-            slotsPerDay: spd,
-          };
-        }),
-      );
+      const rows: Workflow[] = [];
+      for (const d of snap.docs) {
+        const x = d.data() as Record<string, unknown>;
+        const def = workflowDefFromFirestore(x);
+        rows.push({
+          id: d.id,
+          name: String(x.name || ""),
+          enabled: def.enabled,
+          checkInTimes: def.checkInTimes,
+        });
+      }
+      setItems(rows);
     });
   }, [user]);
 
+  const parsedTimes = useMemo(() => parseCheckInTimes(timesText), [timesText]);
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (!user || !name.trim()) return;
+    if (!user || !name.trim() || parsedTimes.length === 0) return;
     setSaving(true);
     try {
       const db = getFirestoreDb();
-      const ih = Math.min(24, Math.max(1, Math.round(intervalHours)));
       await addDoc(collection(db, "users", user.uid, "workflows"), {
         name: name.trim(),
-        intervalHours: ih,
+        checkInTimes: parsedTimes,
         timezone: WORKFLOW_TIMEZONE,
-        dayStartTime: normalizeDayStartTime(dayStartTime),
-        slotsPerDay: Math.min(48, Math.max(1, Math.round(slotsPerDay))),
         enabled: true,
         entryWindowStartMs: Date.now(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       setName("");
+      setTimesText(DEFAULT_TIMES_TEXT);
     } finally {
       setSaving(false);
     }
@@ -113,9 +101,9 @@ export default function WorkflowsPage() {
     await deleteDoc(doc(db, "users", user.uid, "workflows", id));
   }
 
-  const suggested = defaultSlotsPerDay(intervalHours);
-
   if (!user) return null;
+
+  const canSubmit = name.trim().length > 0 && parsedTimes.length > 0 && !saving;
 
   return (
     <div className="space-y-6">
@@ -123,16 +111,16 @@ export default function WorkflowsPage() {
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Workflows</h1>
         <p className="text-sm text-zinc-500">
           Times use <strong className="font-medium text-zinc-700 dark:text-zinc-300">India (IST)</strong>{" "}
-          ({WORKFLOW_TIMEZONE}). Set first check-in, interval, and max per day. Enable push in
-          Settings.
+          ({WORKFLOW_TIMEZONE}). List the times you want check-ins on (e.g. <code>0, 8:23, 10</code>),
+          comma separated.
         </p>
       </div>
 
       <form
         onSubmit={(e) => void create(e)}
-        className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 dark:border-zinc-800 dark:bg-zinc-900/40 md:grid-cols-2"
+        className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 dark:border-zinc-800 dark:bg-zinc-900/40"
       >
-        <div className="md:col-span-2">
+        <div>
           <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Name</label>
           <input
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
@@ -143,47 +131,33 @@ export default function WorkflowsPage() {
         </div>
         <div>
           <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Every (hours)
+            Check-in times (IST)
           </label>
           <input
-            type="number"
-            min={1}
-            max={24}
+            type="text"
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-            value={intervalHours}
-            onChange={(e) => setIntervalHours(Number(e.target.value))}
+            value={timesText}
+            onChange={(e) => setTimesText(e.target.value)}
+            placeholder="0, 8:23, 10"
           />
+          <p className="mt-1 text-xs text-zinc-500">
+            24-hour <code>H</code> or <code>H:MM</code>, comma separated. Bare numbers default to{" "}
+            <code>:00</code>. e.g. <code>0, 8:23, 23:33</code>.{" "}
+            {parsedTimes.length > 0 ? (
+              <>
+                Will check in at <strong>{formatCheckInTimes(parsedTimes)}</strong> ({parsedTimes.length}
+                /day).
+              </>
+            ) : (
+              <span className="text-amber-600 dark:text-amber-400">Enter at least one valid time.</span>
+            )}
+          </p>
         </div>
         <div>
-          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            First check-in (IST)
-          </label>
-          <input
-            type="time"
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-            value={dayStartTime}
-            onChange={(e) => setDayStartTime(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Max per day
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={48}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-            value={slotsPerDay}
-            onChange={(e) => setSlotsPerDay(Number(e.target.value))}
-          />
-          <p className="mt-1 text-xs text-zinc-400">Suggested cap: {suggested}</p>
-        </div>
-        <div className="md:col-span-2">
           <button
             type="submit"
-            disabled={saving}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+            disabled={!canSubmit}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
           >
             Create workflow
           </button>
@@ -194,32 +168,36 @@ export default function WorkflowsPage() {
         {items.map((w) => (
           <li
             key={w.id}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950"
+            className="group relative flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900"
           >
-            <div>
-              <Link
-                href={`/dashboard/workflows/${w.id}`}
-                className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-              >
+            <Link
+              href={`/dashboard/workflows/${w.id}`}
+              aria-label={`Open ${w.name || "workflow"}`}
+              className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 dark:focus-visible:ring-indigo-400/40"
+            />
+            <div className="min-w-0">
+              <p className="font-medium text-zinc-900 group-hover:underline dark:text-zinc-50">
                 {w.name}
-              </Link>
+              </p>
               <p className="text-xs text-zinc-500">
-                From {w.dayStartTime} IST · up to {w.slotsPerDay}/day · every {w.intervalHours}h ·{" "}
-                {w.enabled ? "On" : "Off"}
+                {w.checkInTimes.length > 0
+                  ? `At ${formatCheckInTimes(w.checkInTimes)} IST · ${w.checkInTimes.length}/day`
+                  : "No check-in times set"}{" "}
+                · {w.enabled ? "On" : "Off"}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="relative z-10 flex gap-2">
               <button
                 type="button"
                 onClick={() => void toggleEnabled(w)}
-                className="rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700"
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-800"
               >
                 {w.enabled ? "Disable" : "Enable"}
               </button>
               <button
                 type="button"
                 onClick={() => void remove(w.id)}
-                className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                className="rounded-lg bg-white px-2 py-1 text-xs text-rose-600 hover:bg-rose-50 dark:bg-zinc-950 dark:text-rose-400 dark:hover:bg-rose-950/40"
               >
                 Delete
               </button>

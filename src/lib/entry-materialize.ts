@@ -1,20 +1,16 @@
 import type { WorkflowOutcome } from "@/lib/types";
 import { WORKFLOW_TIMEZONE } from "@/lib/workflow-timezone";
 import {
-  defaultSlotsPerDay,
   entryDocId,
-  normalizeDayStartTime,
+  normalizeCheckInTimes,
   slotsInUtcRange,
 } from "@/lib/workflow-schedule";
 
 export type WorkflowDef = {
-  intervalHours: number;
+  /** Minutes-of-day in `timezone` (0-1439). */
+  checkInTimes: number[];
   timezone: string;
   enabled: boolean;
-  /** Local wall time in `timezone`, format `HH:mm`, first slot of each day. */
-  dayStartTime: string;
-  /** Max check-ins per local calendar day (notifications only for materialized slots). */
-  slotsPerDay: number;
   /**
    * Client epoch ms when the workflow was created. Slots are not materialized before this
    * instant (older workflows omit this and keep the default 48h lookback).
@@ -38,20 +34,17 @@ function firestoreTimestampToMs(value: unknown): number | undefined {
 }
 
 export function workflowDefFromFirestore(data: Record<string, unknown>): WorkflowDef {
-  const intervalHours = Math.min(
-    24,
-    Math.max(1, Math.round(Number(data.intervalHours) || 4)),
-  );
   const timezone = WORKFLOW_TIMEZONE;
   const enabled = data.enabled !== false;
-  const dayStartTime = normalizeDayStartTime(
-    typeof data.dayStartTime === "string" ? data.dayStartTime : undefined,
-  );
-  let slotsPerDay = Math.round(Number(data.slotsPerDay));
-  if (!Number.isFinite(slotsPerDay) || slotsPerDay < 1) {
-    slotsPerDay = defaultSlotsPerDay(intervalHours);
+  let checkInTimes = normalizeCheckInTimes(data.checkInTimes);
+  if (checkInTimes.length === 0 && Array.isArray(data.checkInHours)) {
+    const fallback = new Set<number>();
+    for (const x of data.checkInHours) {
+      const h = Math.round(Number(x));
+      if (Number.isInteger(h) && h >= 0 && h <= 23) fallback.add(h * 60);
+    }
+    checkInTimes = [...fallback].sort((a, b) => a - b);
   }
-  slotsPerDay = Math.min(48, Math.max(1, slotsPerDay));
   const rawStart = data.entryWindowStartMs;
   let entryWindowStartMs: number | undefined;
   if (typeof rawStart === "number" && Number.isFinite(rawStart)) {
@@ -59,11 +52,9 @@ export function workflowDefFromFirestore(data: Record<string, unknown>): Workflo
   }
   const createdAtMs = firestoreTimestampToMs(data.createdAt);
   return {
-    intervalHours,
+    checkInTimes,
     timezone,
     enabled,
-    dayStartTime,
-    slotsPerDay,
     entryWindowStartMs,
     createdAtMs,
   };
@@ -80,16 +71,6 @@ export function workflowEntryVisibilityMinMs(wf: WorkflowDef): number {
   return 0;
 }
 
-/** UTC range start for materializing entries: 48h lookback, capped to workflow start if known. */
-export function entryMaterializeUtcFrom(nowMs: number, wf: WorkflowDef): Date {
-  const defaultLookbackMs = nowMs - 48 * 60 * 60 * 1000;
-  const wfStart = workflowEntryVisibilityMinMs(wf);
-  if (wfStart > 0) {
-    return new Date(Math.max(defaultLookbackMs, wfStart));
-  }
-  return new Date(defaultLookbackMs);
-}
-
 export type WorkflowEntryWrite = {
   id: string;
   data: {
@@ -100,7 +81,6 @@ export type WorkflowEntryWrite = {
     outcome: WorkflowOutcome;
     /** Free-form log text; empty string when not set. */
     note: string;
-    notifiedAt: null;
     createdAt: Date;
     updatedAt: Date;
   };
@@ -113,12 +93,11 @@ export function buildPendingEntriesForWindow(
   utcTo: Date,
 ): WorkflowEntryWrite[] {
   if (!wf.enabled) return [];
+  if (wf.checkInTimes.length === 0) return [];
   const slots = slotsInUtcRange(
     {
       timezone: wf.timezone,
-      intervalHours: wf.intervalHours,
-      dayStartTime: wf.dayStartTime,
-      slotsPerDay: wf.slotsPerDay,
+      checkInTimes: wf.checkInTimes,
     },
     utcFrom,
     utcTo,
@@ -135,7 +114,6 @@ export function buildPendingEntriesForWindow(
         dayKey: slot.dayKey,
         outcome: "pending" as const,
         note: "",
-        notifiedAt: null,
         createdAt: now,
         updatedAt: now,
       },

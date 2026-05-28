@@ -61,21 +61,21 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          {error ? <p className="text-xs text-red-600">{error}</p> : null}
+          {error ? <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p> : null}
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+            className="w-full rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
           >
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
         <p className="mt-4 text-center text-xs text-zinc-500">
-          <Link href="/signup" className="underline">
+          <Link href="/signup" className="text-indigo-600 underline hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
             Create account
           </Link>
           {" · "}
-          <Link href="/forgot-password" className="underline">
+          <Link href="/forgot-password" className="text-indigo-600 underline hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
             Forgot password
           </Link>
         </p>

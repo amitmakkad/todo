@@ -1,5 +1,6 @@
 "use client";
 
+import { EnsureTodayEntries } from "@/components/ensure-today-entries";
 import { useAuth } from "@/contexts/auth-context";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -9,7 +10,6 @@ const links = [
   { href: "/dashboard", label: "Tasks" },
   { href: "/dashboard/workflows", label: "Workflows" },
   { href: "/dashboard/results", label: "Results" },
-  { href: "/dashboard/settings", label: "Settings" },
 ];
 
 export default function DashboardShell({
@@ -36,6 +36,7 @@ export default function DashboardShell({
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
+      <EnsureTodayEntries />
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <Link href="/dashboard" className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -51,9 +52,9 @@ export default function DashboardShell({
                 <Link
                   key={l.href}
                   href={l.href}
-                  className={`rounded-lg px-3 py-1.5 ${
+                  className={`rounded-lg px-3 py-1.5 transition ${
                     active
-                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      ? "bg-indigo-600 text-white shadow-sm dark:bg-indigo-500"
                       : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900"
                   }`}
                 >

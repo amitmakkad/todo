@@ -1,5 +1,4 @@
 import { EnvBanner } from "@/components/env-banner";
-import { SwRegister } from "@/components/sw-register";
 import { AuthProvider } from "@/contexts/auth-context";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -25,7 +24,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#fafafa",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
@@ -40,10 +40,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-zinc-50 font-sans text-zinc-950 antialiased dark:bg-zinc-950 dark:text-zinc-50">
         <EnvBanner />
-        <AuthProvider>
-          <SwRegister />
-          {children}
-        </AuthProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
+/*
+ * Light mode is the canonical theme. The `dark:` Tailwind variant is
+ * re-defined to only activate when a `.dark` class is present on an ancestor;
+ * since we never add that class, every `dark:*` utility in the codebase is
+ * inert. (Leaves the dark styles available for a future explicit toggle.)
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
   --background: #fafafa;
   --foreground: #18181b;
 }
@@ -10,13 +19,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #09090b;
-    --foreground: #fafafa;
-  }
 }
 
 body {

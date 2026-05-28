@@ -44,6 +44,7 @@ export default function ResultsPage() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [wfVisibilityMinMs, setWfVisibilityMinMs] = useState(0);
+  const [entriesError, setEntriesError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -97,6 +98,7 @@ export default function ResultsPage() {
     return onSnapshot(
       q,
       (snap) => {
+        setEntriesError(null);
         const cutoff = Date.now() - RESULTS_WINDOW_MS;
         const rows = snap.docs.map((d) => {
           const x = d.data() as Record<string, unknown>;
@@ -112,6 +114,7 @@ export default function ResultsPage() {
       },
       (err) => {
         console.error("workflow_entries snapshot", err);
+        setEntriesError(err.message);
       },
     );
   }, [user, selectedId]);
@@ -156,22 +159,57 @@ export default function ResultsPage() {
       </div>
 
       <div>
-        <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Workflow</label>
-        <select
-          className="mt-1 w-full max-w-md rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-          value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value)}
-        >
-          {workflows.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-3">
+          <label
+            htmlFor="results-workflow-select"
+            className="shrink-0 text-xs font-medium text-zinc-600 dark:text-zinc-400"
+          >
+            Workflow
+          </label>
+          <select
+            id="results-workflow-select"
+            className="w-full max-w-md rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+            value={selectedId}
+            onChange={(e) => setSelectedId(e.target.value)}
+          >
+            {workflows.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        </div>
         {workflows.length === 0 ? (
           <p className="mt-2 text-xs text-zinc-400">Create a workflow first.</p>
         ) : null}
       </div>
+
+      {entriesError ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          <p className="font-semibold">Couldn&apos;t load entries — your data is safe in Firestore.</p>
+          <p className="mt-1 break-words">
+            {(() => {
+              const m = entriesError.match(/https:\/\/console\.firebase\.google\.com\S+/);
+              if (!m) return entriesError;
+              const url = m[0];
+              return (
+                <>
+                  {entriesError.replace(url, "")}
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-indigo-700 underline hover:text-indigo-600"
+                  >
+                    Open one-click create-index link
+                  </a>
+                  .
+                </>
+              );
+            })()}
+          </p>
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
         <table className="w-full min-w-[480px] text-left text-sm">
@@ -192,11 +230,11 @@ export default function ResultsPage() {
                 className="border-b border-zinc-100 dark:border-zinc-800/80"
               >
                 <td className="px-3 py-2 font-medium text-zinc-900 dark:text-zinc-100">{day}</td>
-                <td className="px-3 py-2 text-emerald-700 dark:text-emerald-400">{c.green}</td>
-                <td className="px-3 py-2 text-red-600 dark:text-red-400">{c.red}</td>
+                <td className="px-3 py-2 font-medium text-emerald-700 dark:text-emerald-400">{c.green}</td>
+                <td className="px-3 py-2 font-medium text-rose-600 dark:text-rose-400">{c.red}</td>
                 <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{c.grey}</td>
                 <td className="px-3 py-2 text-zinc-500">{c.discarded}</td>
-                <td className="px-3 py-2 text-zinc-400">{c.pending}</td>
+                <td className="px-3 py-2 text-amber-600 dark:text-amber-400">{c.pending}</td>
               </tr>
             ))}
             {rollup.length === 0 ? (

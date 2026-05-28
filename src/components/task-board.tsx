@@ -16,8 +16,6 @@ import {
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 
-const SELECT_CHEVRON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`;
-
 const CONTROL =
   "h-11 w-full rounded-xl border border-zinc-300 bg-white px-3.5 text-sm text-zinc-900 shadow-sm outline-none transition " +
   "placeholder:text-zinc-400 " +
@@ -42,8 +40,15 @@ const BUCKETS: TaskBucket[] = [
 const BUCKET_ACCENT: Record<TaskBucket, string> = {
   urgent_important: "border-t-4 border-t-rose-500 dark:border-t-rose-400",
   urgent_not_important: "border-t-4 border-t-amber-500 dark:border-t-amber-400",
-  important_not_urgent: "border-t-4 border-t-sky-500 dark:border-t-sky-400",
+  important_not_urgent: "border-t-4 border-t-emerald-500 dark:border-t-emerald-400",
   neither: "border-t-4 border-t-zinc-400 dark:border-t-zinc-500",
+};
+
+const BUCKET_DOT: Record<TaskBucket, string> = {
+  urgent_important: "bg-rose-500 dark:bg-rose-400",
+  urgent_not_important: "bg-amber-500 dark:bg-amber-400",
+  important_not_urgent: "bg-emerald-500 dark:bg-emerald-400",
+  neither: "bg-zinc-400 dark:bg-zinc-500",
 };
 
 export function TaskBoard({ uid }: { uid: string }) {
@@ -135,28 +140,43 @@ export function TaskBoard({ uid }: { uid: string }) {
               autoComplete="off"
             />
           </div>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1 sm:max-w-sm">
-              <label
-                htmlFor="task-bucket"
-                className="block text-sm font-medium text-zinc-800 dark:text-zinc-100"
-              >
-                Quadrant
-              </label>
-              <select
-                id="task-bucket"
-                className={`input-plain ${CONTROL} mt-2 cursor-pointer bg-no-repeat pr-10 sm:w-full`}
-                style={{ backgroundImage: SELECT_CHEVRON, backgroundPosition: "right 0.65rem center", backgroundSize: "1.25rem" }}
-                value={bucket}
-                onChange={(e) => setBucket(e.target.value as TaskBucket)}
-              >
-                {BUCKETS.map((b) => (
-                  <option key={b} value={b}>
-                    {TASK_BUCKET_LABELS[b]}
-                  </option>
-                ))}
-              </select>
+          <fieldset>
+            <legend className="block text-sm font-medium text-zinc-800 dark:text-zinc-100">
+              Quadrant
+            </legend>
+            <div
+              role="radiogroup"
+              aria-label="Quadrant"
+              className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2"
+            >
+              {BUCKETS.map((b) => {
+                const active = bucket === b;
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setBucket(b)}
+                    className={
+                      "flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm shadow-sm outline-none transition " +
+                      "focus:ring-2 focus:ring-indigo-500/25 dark:focus:ring-indigo-400/20 " +
+                      (active
+                        ? "border-indigo-500 bg-indigo-50 text-zinc-900 ring-2 ring-indigo-500/30 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-zinc-50"
+                        : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900")
+                    }
+                  >
+                    <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${BUCKET_DOT[b]}`} />
+                    <span className="min-w-0 flex-1">{TASK_BUCKET_LABELS[b]}</span>
+                    {active ? (
+                      <span aria-hidden className="text-indigo-600 dark:text-indigo-300">✓</span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
+          </fieldset>
+          <div className="flex justify-end">
             <button
               type="submit"
               disabled={saving}
@@ -196,7 +216,7 @@ export function TaskBoard({ uid }: { uid: string }) {
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg px-2.5 py-1 text-xs font-medium text-zinc-500 hover:bg-zinc-200/80 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                      className="rounded-lg px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                       onClick={() => void removeTask(t.id)}
                     >
                       Delete
@@ -222,21 +242,30 @@ export function TaskBoard({ uid }: { uid: string }) {
             .map((t) => (
               <li
                 key={t.id}
-                className="flex items-center justify-between gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3.5 py-2.5 text-sm text-zinc-500 line-through dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-500"
+                className="flex items-center justify-between gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3.5 py-2.5 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-500"
               >
                 <span className="min-w-0">
-                  {t.title}{" "}
-                  <span className="text-xs font-normal text-zinc-400 no-underline dark:text-zinc-500">
+                  <span className="line-through">{t.title}</span>{" "}
+                  <span className="text-xs font-normal text-zinc-400 dark:text-zinc-500">
                     ({TASK_BUCKET_LABELS[t.bucket]})
                   </span>
                 </span>
-                <button
-                  type="button"
-                  className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 no-underline hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/10"
-                  onClick={() => void toggleDone(t)}
-                >
-                  Undo
-                </button>
+                <span className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/10"
+                    onClick={() => void toggleDone(t)}
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                    onClick={() => void removeTask(t.id)}
+                  >
+                    Delete
+                  </button>
+                </span>
               </li>
             ))}
           {tasks.every((t) => !t.completedAt) ? (

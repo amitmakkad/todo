@@ -6,22 +6,51 @@ export type WorkflowSlot = {
   dayKey: string;
 };
 
-/** Normalized `HH:mm` for use with `toDate(\`${dayKey}T${hhmm}:00\`, tz)`. */
-export function normalizeDayStartTime(s: string | undefined): string {
-  if (!s || typeof s !== "string") return "00:00";
-  const m = s.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-  if (!m) return "00:00";
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
-    return "00:00";
-  }
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+const TIME_TOKEN_RE = /^(\d{1,2})(?::(\d{1,2}))?$/;
+
+function tokenToMinutes(token: string): number | null {
+  const m = TIME_TOKEN_RE.exec(token.trim());
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = m[2] === undefined ? 0 : Number(m[2]);
+  if (!Number.isInteger(hh) || !Number.isInteger(mm)) return null;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
 }
 
-export function defaultSlotsPerDay(intervalHours: number): number {
-  const step = Math.max(1, intervalHours);
-  return Math.min(48, Math.max(1, Math.ceil(24 / step)));
+/**
+ * Parse user input like "0, 8:23, 10" into a sorted, deduped array of minute-of-day
+ * values (0-1439). Bare integers are treated as the hour (minutes = 0).
+ */
+export function parseCheckInTimes(input: string): number[] {
+  if (typeof input !== "string") return [];
+  const parts = input.split(/[\s,]+/).filter(Boolean);
+  const out = new Set<number>();
+  for (const p of parts) {
+    const n = tokenToMinutes(p);
+    if (n === null) continue;
+    out.add(n);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+/** Sanitize a possibly-bogus stored value into sorted, deduped minutes-of-day. */
+export function normalizeCheckInTimes(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const out = new Set<number>();
+  for (const x of raw) {
+    const n = Math.round(Number(x));
+    if (!Number.isInteger(n) || n < 0 || n > 1439) continue;
+    out.add(n);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+/** Render minutes-of-day array as "0:00, 8:23, 23:33" — no leading zero on hour. */
+export function formatCheckInTimes(times: number[]): string {
+  return times
+    .map((t) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`)
+    .join(", ");
 }
 
 function dayKeysTouchingRange(utcFrom: Date, utcTo: Date, timeZone: string): string[] {
@@ -47,50 +76,29 @@ function dayKeysTouchingRange(utcFrom: Date, utcTo: Date, timeZone: string): str
 }
 
 /**
- * Check-in slots for one calendar day in `timeZone`: first at `dayStartTime`, then every
- * `intervalHours`, at most `slotsPerDay` times, all before next local midnight.
+ * Check-in slots for one calendar day in `timeZone`: one slot at HH:MM local time for each
+ * minute-of-day value in `checkInTimes`.
  */
 export function slotsForDay(
   dayKey: string,
   timeZone: string,
-  intervalHours: number,
-  dayStartTime: string,
-  slotsPerDay: number,
+  checkInTimes: number[],
 ): WorkflowSlot[] {
-  const hhmm = normalizeDayStartTime(dayStartTime);
-  const first = toDate(`${dayKey}T${hhmm}:00`, { timeZone });
-  const nextDayKey = formatInTimeZone(
-    addDays(toDate(`${dayKey}T12:00:00`, { timeZone }), 1),
-    timeZone,
-    "yyyy-MM-dd",
-  );
-  const nextMidnight = toDate(`${nextDayKey}T00:00:00`, { timeZone });
-  if (Number.isNaN(first.getTime()) || Number.isNaN(nextMidnight.getTime())) {
-    return [];
-  }
-
-  const end = nextMidnight.getTime();
-  const step = Math.max(1, intervalHours) * 60 * 60 * 1000;
-  const max = Math.min(48, Math.max(1, Math.round(slotsPerDay)));
-
   const out: WorkflowSlot[] = [];
-  let t = first.getTime();
-  let count = 0;
-  while (t < end && count < max) {
-    const scheduledAt = new Date(t);
+  for (const t of checkInTimes) {
+    const hh = String(Math.floor(t / 60)).padStart(2, "0");
+    const mm = String(t % 60).padStart(2, "0");
+    const scheduledAt = toDate(`${dayKey}T${hh}:${mm}:00`, { timeZone });
+    if (Number.isNaN(scheduledAt.getTime())) continue;
     const dk = formatInTimeZone(scheduledAt, timeZone, "yyyy-MM-dd");
     out.push({ scheduledAt, dayKey: dk });
-    count++;
-    t += step;
   }
   return out;
 }
 
 export type ScheduleParams = {
   timezone: string;
-  intervalHours: number;
-  dayStartTime: string;
-  slotsPerDay: number;
+  checkInTimes: number[];
 };
 
 export function slotsInUtcRange(
@@ -100,12 +108,8 @@ export function slotsInUtcRange(
 ): WorkflowSlot[] {
   const keys = dayKeysTouchingRange(utcFrom, utcTo, wf.timezone);
   const slots: WorkflowSlot[] = [];
-  const dayStartTime = normalizeDayStartTime(wf.dayStartTime);
-  const slotsPerDay = wf.slotsPerDay;
   for (const dayKey of keys) {
-    slots.push(
-      ...slotsForDay(dayKey, wf.timezone, wf.intervalHours, dayStartTime, slotsPerDay),
-    );
+    slots.push(...slotsForDay(dayKey, wf.timezone, wf.checkInTimes));
   }
   return slots.filter(
     (s) =>
